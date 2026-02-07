@@ -1,0 +1,30 @@
+name: Clinical Data API Tests
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - dev
+      - iffat03
+  pull_request:
+
+jobs:
+  test-clinical:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run clinical tests
+        # Increased timeout to 15000ms as requested in your JS file
+        run: npx mocha TestFolder/clinical_test.js --timeout 15000
