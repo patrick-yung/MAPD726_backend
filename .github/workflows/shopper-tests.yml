@@ -25,5 +25,5 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run appointments tests
-        run: npx mocha TestFolder/shopping_test.js --timeout 10000
+      - name: Run shopping lists tests
+        run: npx mocha TestFolder/shopper_test.js --timeout 10000
