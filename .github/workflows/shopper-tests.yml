@@ -10,7 +10,7 @@ on:
   pull_request:
 
 jobs:
-  test-appointments:
+  test-shopping-api:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,9 +21,27 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Install test dependencies
+        run: npm install --save-dev chai chai-http mocha
+
+      - name: Start server in background
+        run: |
+          npm start &
+          sleep 5  # Give server time to start
+          echo "Server started in background"
 
       - name: Run shopping lists tests
-        run: npx mocha TestFolder/shopper_test.js --timeout 10000
+        run: npx mocha TestFolder/shopper_test.js --timeout 15000
+        env:
+          PORT: 3000
+
+      - name: Stop background server
+        if: always()
+        run: |
+          pkill -f "node.*index.js" || true
+          echo "Server stopped"

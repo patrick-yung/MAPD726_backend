@@ -114,7 +114,8 @@ server.post('/users', function (req, res, next) {
   User.findOne({ username: req.body.username })
     .then((existingUser) => {
       if (existingUser) {
-        return next(new errors.ConflictError(`User with username '${req.body.username}' already exists`));
+        // FIX: Return the error immediately, don't continue
+        return Promise.reject(new errors.ConflictError(`User with username '${req.body.username}' already exists`));
       }
 
       let newUser = new User({
@@ -130,7 +131,8 @@ server.post('/users', function (req, res, next) {
       return next();
     })
     .catch((error) => {
-      return next(new Error(JSON.stringify(error.errors)));
+      // FIX: Pass the error directly to next()
+      return next(error);
     });
 });
 
@@ -149,9 +151,20 @@ server.put('/users/:id', function (req, res, next) {
         return next(new errors.BadRequestError('Username must be supplied'));
       }
 
-      existingUser.username = req.body.username;
-
-      return existingUser.save();
+      // ADD THIS CHECK: If username is changing, check if new username exists
+      if (req.body.username !== existingUser.username) {
+        return User.findOne({ username: req.body.username })
+          .then((userWithSameName) => {
+            if (userWithSameName) {
+              return next(new errors.ConflictError(`User with username '${req.body.username}' already exists`));
+            }
+            existingUser.username = req.body.username;
+            return existingUser.save();
+          });
+      } else {
+        existingUser.username = req.body.username;
+        return existingUser.save();
+      }
     })
     .then((updatedUser) => {
       res.send(200, updatedUser);
@@ -324,7 +337,10 @@ server.del('/users/:userId/shoplists/:listId', function (req, res, next) {
         return next(new errors.NotFoundError(`Shop list with id '${req.params.listId}' not found`));
       }
 
-      shopList.remove();
+      // FIXED: Use filter() method instead of pull() for compatibility
+      user.shopLists = user.shopLists.filter(list => 
+        list._id.toString() !== req.params.listId
+      );
       
       return user.save();
     })
@@ -337,7 +353,8 @@ server.del('/users/:userId/shoplists/:listId', function (req, res, next) {
       return next();
     })
     .catch((error) => {
-      return next(new Error(JSON.stringify(error.errors)));
+      console.error("Error deleting shop list:", error);
+      return next(new Error(JSON.stringify(error.errors || error.message)));
     });
 });
 
@@ -486,7 +503,10 @@ server.del('/users/:userId/shoplists/:listId/items/:itemId', function (req, res,
         return next(new errors.NotFoundError(`Item with id '${req.params.itemId}' not found`));
       }
 
-      item.remove();
+      // FIXED: Use filter() method instead of pull() for compatibility
+      shopList.items = shopList.items.filter(item => 
+        item._id.toString() !== req.params.itemId
+      );
       
       return user.save();
     })
@@ -500,7 +520,8 @@ server.del('/users/:userId/shoplists/:listId/items/:itemId', function (req, res,
       return next();
     })
     .catch((error) => {
-      return next(new Error(JSON.stringify(error.errors)));
+      console.error("Error deleting item:", error);
+      return next(new Error(JSON.stringify(error.errors || error.message)));
     });
 });
 
