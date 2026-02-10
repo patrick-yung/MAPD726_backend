@@ -1,4 +1,4 @@
-name: Patients API Tests
+name: Shopping Lists API Tests
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - main
       - master
       - dev
-      - YungPakHongPatrick3-*    # your branches
+      - shopping-*    # your branches
   pull_request:
 
 jobs:
@@ -25,5 +25,5 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run patients tests
-        run: npx mocha TestFolder/patient_test.js --timeout 10000
+      - name: Run appointments tests
+        run: npx mocha TestFolder/shopping_test.js --timeout 10000
