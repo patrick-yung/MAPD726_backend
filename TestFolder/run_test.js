@@ -3,9 +3,7 @@ const { spawn } = require('child_process');
 
 async function runTests() {
   const testFiles = [
-    'TestFolder/clinical_test.js',
-    'TestFolder/appointments_test.js',
-    'TestFolder/patient_test.js' // if you have it
+    'TestFolder/shopper_test.js',
   ];
 
   console.log('🚀 Running all tests...\n');
