@@ -4,7 +4,7 @@ const expect = chai.expect;
 
 chai.use(chaiHttp);
 
-const uri = 'http://localhost:3000'; // Test locally
+const uri = 'https://mapd713-group-project.onrender.com';
 
 // Variables to store IDs for testing
 let testUserId;

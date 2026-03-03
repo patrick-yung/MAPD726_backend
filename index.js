@@ -38,14 +38,18 @@ server.use(restify.plugins.fullResponse());
 server.use(restify.plugins.bodyParser());
 server.use(restify.plugins.queryParser());
 
+// MODIFIED: Added date and isChecked fields to shopListItemSchema
 const shopListItemSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  price: { type: Number, required: true, min: 0 }
+  price: { type: Number, required: true, min: 0 },
+  addedDate: { type: Date, default: Date.now }, // NEW: Auto-set to current date when item is created
+  isChecked: { type: Boolean, default: false }  // NEW: Boolean to track if item is checked off, defaults to false
 });
 
 const shopListSchema = new mongoose.Schema({
   topic: { type: String, required: true },
-  items: [shopListItemSchema]
+  items: [shopListItemSchema],
+  createdDate: { type: Date, default: Date.now } // OPTIONAL: Also add creation date to shop list
 });
 
 const userSchema = new mongoose.Schema({
@@ -114,7 +118,6 @@ server.post('/users', function (req, res, next) {
   User.findOne({ username: req.body.username })
     .then((existingUser) => {
       if (existingUser) {
-        // FIX: Return the error immediately, don't continue
         return Promise.reject(new errors.ConflictError(`User with username '${req.body.username}' already exists`));
       }
 
@@ -131,7 +134,6 @@ server.post('/users', function (req, res, next) {
       return next();
     })
     .catch((error) => {
-      // FIX: Pass the error directly to next()
       return next(error);
     });
 });
@@ -151,7 +153,6 @@ server.put('/users/:id', function (req, res, next) {
         return next(new errors.BadRequestError('Username must be supplied'));
       }
 
-      // ADD THIS CHECK: If username is changing, check if new username exists
       if (req.body.username !== existingUser.username) {
         return User.findOne({ username: req.body.username })
           .then((userWithSameName) => {
@@ -249,6 +250,7 @@ server.post('/users/:userId/shoplists', function (req, res, next) {
       const newShopList = {
         topic: req.body.topic,
         items: req.body.items || []
+        // createdDate will be automatically set by schema default
       };
 
       user.shopLists.push(newShopList);
@@ -337,7 +339,6 @@ server.del('/users/:userId/shoplists/:listId', function (req, res, next) {
         return next(new errors.NotFoundError(`Shop list with id '${req.params.listId}' not found`));
       }
 
-      // FIXED: Use filter() method instead of pull() for compatibility
       user.shopLists = user.shopLists.filter(list => 
         list._id.toString() !== req.params.listId
       );
@@ -383,6 +384,7 @@ server.get('/users/:userId/shoplists/:listId/items', function (req, res, next) {
     });
 });
 
+// MODIFIED: Updated to handle isChecked field and addedDate will be auto-set
 server.post('/users/:userId/shoplists/:listId/items', function (req, res, next) {
   console.log('POST /users/:userId/shoplists/:listId/items params=>' + JSON.stringify(req.params));
   console.log('POST /users/:userId/shoplists/:listId/items body=>' + JSON.stringify(req.body));
@@ -411,9 +413,12 @@ server.post('/users/:userId/shoplists/:listId/items', function (req, res, next) 
         return next(new errors.NotFoundError(`Shop list with id '${req.params.listId}' not found`));
       }
 
+      // MODIFIED: Create item with optional isChecked field (defaults to false if not provided)
       const newItem = {
         name: req.body.name,
-        price: price
+        price: price,
+        isChecked: req.body.isChecked !== undefined ? req.body.isChecked : false // Use provided value or default to false
+        // addedDate will be automatically set by schema default
       };
 
       shopList.items.push(newItem);
@@ -431,13 +436,14 @@ server.post('/users/:userId/shoplists/:listId/items', function (req, res, next) 
     });
 });
 
+// MODIFIED: Updated to allow updating isChecked field
 server.put('/users/:userId/shoplists/:listId/items/:itemId', function (req, res, next) {
   console.log('PUT /users/:userId/shoplists/:listId/items/:itemId params=>' + JSON.stringify(req.params));
   console.log('PUT /users/:userId/shoplists/:listId/items/:itemId body=>' + JSON.stringify(req.body));
   trackFunctionCall('/users/:userId/shoplists/:listId/items/:itemId', 'PUT');
 
-  if (!req.body.name && req.body.price === undefined) {
-    return next(new errors.BadRequestError('Either name or price must be supplied for update'));
+  if (!req.body.name && req.body.price === undefined && req.body.isChecked === undefined) {
+    return next(new errors.BadRequestError('At least one field (name, price, or isChecked) must be supplied for update'));
   }
 
   if (req.body.price !== undefined) {
@@ -468,6 +474,10 @@ server.put('/users/:userId/shoplists/:listId/items/:itemId', function (req, res,
       }
       if (req.body.price !== undefined) {
         item.price = Number(req.body.price);
+      }
+      // MODIFIED: Allow updating isChecked field
+      if (req.body.isChecked !== undefined) {
+        item.isChecked = req.body.isChecked;
       }
 
       return user.save();
@@ -503,7 +513,6 @@ server.del('/users/:userId/shoplists/:listId/items/:itemId', function (req, res,
         return next(new errors.NotFoundError(`Item with id '${req.params.itemId}' not found`));
       }
 
-      // FIXED: Use filter() method instead of pull() for compatibility
       shopList.items = shopList.items.filter(item => 
         item._id.toString() !== req.params.itemId
       );
@@ -584,7 +593,8 @@ server.get('/users/shoplists/topics/:topic', function (req, res, next) {
               username: user.username,
               shopListId: shopList._id,
               topic: shopList.topic,
-              itemCount: shopList.items.length
+              itemCount: shopList.items.length,
+              createdDate: shopList.createdDate // OPTIONAL: Include created date
             });
           }
         });
