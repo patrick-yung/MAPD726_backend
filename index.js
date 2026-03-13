@@ -22,10 +22,16 @@ let server = restify.createServer({ name: SERVER_NAME });
 
 server.listen(PORT, function () {
   console.log('Server %s listening at %s', server.name, server.url);
-  console.log('**** Resources: ****');
-  console.log('********************');
-  console.log(' /users');
-  console.log(' /users/:id');
+  console.log('**** User Auth API Resources: ****');
+  console.log('**********************************');
+  console.log(' GET    /users');
+  console.log(' POST   /users');
+  console.log(' POST   /users/authenticate');
+  console.log(' GET    /users/:id');
+  console.log(' GET    /users/:id/password');
+  console.log(' PUT    /users/:id');
+  console.log(' DELETE /users/:id');
+  console.log(' DELETE /users');
   console.log(' /users/:userId/shoplists');
   console.log(' /users/:userId/shoplists/:listId');
   console.log(' /users/:userId/shoplists/:listId/items');
@@ -38,22 +44,23 @@ server.use(restify.plugins.fullResponse());
 server.use(restify.plugins.bodyParser());
 server.use(restify.plugins.queryParser());
 
-// MODIFIED: Added date and isChecked fields to shopListItemSchema
 const shopListItemSchema = new mongoose.Schema({
   name: { type: String, required: true },
   price: { type: Number, required: true, min: 0 },
-  addedDate: { type: Date, default: Date.now }, // NEW: Auto-set to current date when item is created
-  isChecked: { type: Boolean, default: false }  // NEW: Boolean to track if item is checked off, defaults to false
+  addedDate: { type: Date, default: Date.now },
+  isChecked: { type: Boolean, default: false }
 });
 
 const shopListSchema = new mongoose.Schema({
   topic: { type: String, required: true },
   items: [shopListItemSchema],
-  createdDate: { type: Date, default: Date.now } // OPTIONAL: Also add creation date to shop list
+  createdDate: { type: Date, default: Date.now }
 });
 
+// ✅ ADDED: Password field with default "123"
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
+  password: { type: String, required: true, default: '123' }, // Default password is 123
   shopLists: [shopListSchema]
 });
 
@@ -77,7 +84,13 @@ server.get('/users', function (req, res, next) {
 
   User.find({})
     .then((users) => {
-      res.send(users);
+      // Don't send passwords in response for security
+      const usersWithoutPasswords = users.map(user => {
+        const userObj = user.toObject();
+        delete userObj.password;
+        return userObj;
+      });
+      res.send(usersWithoutPasswords);
       return next();
     })
     .catch((error) => {
@@ -92,7 +105,10 @@ server.get('/users/:id', function (req, res, next) {
   User.findById(req.params.id)
     .then((user) => {
       if (user) {
-        res.send(user);
+        // Don't send password in response
+        const userObj = user.toObject();
+        delete userObj.password;
+        res.send(userObj);
       } else {
         res.send(404);
       }
@@ -103,6 +119,66 @@ server.get('/users/:id', function (req, res, next) {
     });
 });
 
+// ✅ NEW: Get user password by ID (for specific use cases)
+server.get('/users/:id/password', function (req, res, next) {
+  console.log('GET /users/:id/password params=>' + JSON.stringify(req.params));
+  trackFunctionCall('/users/:id/password', 'GET');
+
+  User.findById(req.params.id)
+    .then((user) => {
+      if (!user) {
+        return next(new errors.NotFoundError(`User with id '${req.params.id}' not found`));
+      }
+      // Only send password
+      res.send({ password: user.password });
+      return next();
+    })
+    .catch((error) => {
+      return next(new Error(JSON.stringify(error.errors)));
+    });
+});
+
+// ✅ NEW: Authenticate user endpoint
+server.post('/users/authenticate', function (req, res, next) {
+  console.log('POST /users/authenticate body=>' + JSON.stringify(req.body));
+  trackFunctionCall('/users/authenticate', 'POST');
+
+  if (!req.body) {
+    return next(new errors.BadRequestError('Request body is missing'));
+  }
+
+  if (req.body.username === undefined || req.body.password === undefined) {
+    return next(new errors.BadRequestError('Username and password must be supplied'));
+  }
+
+  User.findOne({ username: req.body.username })
+    .then((user) => {
+      if (!user) {
+        return next(new errors.UnauthorizedError('Invalid username or password'));
+      }
+
+      // Check password
+      if (user.password !== req.body.password) {
+        return next(new errors.UnauthorizedError('Invalid username or password'));
+      }
+
+      // Authentication successful - return user without password
+      const userObj = user.toObject();
+      delete userObj.password;
+      
+      res.send({
+        success: true,
+        message: 'Authentication successful',
+        user: userObj
+      });
+      return next();
+    })
+    .catch((error) => {
+      return next(new Error(JSON.stringify(error.errors)));
+    });
+});
+
+// ✅ UPDATED: Create user with optional password (defaults to "123")
 server.post('/users', function (req, res, next) {
   console.log('POST /users body=>' + JSON.stringify(req.body));
   trackFunctionCall('/users', 'POST');
@@ -121,8 +197,10 @@ server.post('/users', function (req, res, next) {
         return Promise.reject(new errors.ConflictError(`User with username '${req.body.username}' already exists`));
       }
 
+      // Use provided password or default to "123"
       let newUser = new User({
         username: req.body.username,
+        password: req.body.password || '123', // Use provided password or default
         shopLists: []
       });
 
@@ -130,7 +208,10 @@ server.post('/users', function (req, res, next) {
     })
     .then((user) => {
       console.log("saved user: " + JSON.stringify(user));
-      res.send(201, user);
+      // Don't send password back
+      const userObj = user.toObject();
+      delete userObj.password;
+      res.send(201, userObj);
       return next();
     })
     .catch((error) => {
@@ -138,6 +219,7 @@ server.post('/users', function (req, res, next) {
     });
 });
 
+// ✅ UPDATED: Update user with password support
 server.put('/users/:id', function (req, res, next) {
   console.log('PUT /users/:id params=>' + JSON.stringify(req.params));
   console.log('PUT /users/:id body=>' + JSON.stringify(req.body));
@@ -149,30 +231,38 @@ server.put('/users/:id', function (req, res, next) {
         return next(new errors.NotFoundError(`User with id '${req.params.id}' not found`));
       }
 
-      if (req.body.username === undefined) {
-        return next(new errors.BadRequestError('Username must be supplied'));
+      // Handle username update
+      let updatePromise = Promise.resolve();
+
+      if (req.body.username !== undefined) {
+        if (req.body.username !== existingUser.username) {
+          updatePromise = User.findOne({ username: req.body.username })
+            .then((userWithSameName) => {
+              if (userWithSameName) {
+                throw new errors.ConflictError(`User with username '${req.body.username}' already exists`);
+              }
+              existingUser.username = req.body.username;
+            });
+        }
       }
 
-      if (req.body.username !== existingUser.username) {
-        return User.findOne({ username: req.body.username })
-          .then((userWithSameName) => {
-            if (userWithSameName) {
-              return next(new errors.ConflictError(`User with username '${req.body.username}' already exists`));
-            }
-            existingUser.username = req.body.username;
-            return existingUser.save();
-          });
-      } else {
-        existingUser.username = req.body.username;
+      return updatePromise.then(() => {
+        // Handle password update
+        if (req.body.password !== undefined) {
+          existingUser.password = req.body.password;
+        }
         return existingUser.save();
-      }
+      });
     })
     .then((updatedUser) => {
-      res.send(200, updatedUser);
+      // Don't send password back
+      const userObj = updatedUser.toObject();
+      delete userObj.password;
+      res.send(200, userObj);
       return next();
     })
     .catch((error) => {
-      return next(new Error(JSON.stringify(error.errors)));
+      return next(error);
     });
 });
 
@@ -187,7 +277,7 @@ server.del('/users/:id', function (req, res, next) {
       }
       res.send(200, {
         message: `User '${user.username}' deleted successfully`,
-        deletedUser: user
+        deletedUser: user.username
       });
       return next();
     })
@@ -250,7 +340,6 @@ server.post('/users/:userId/shoplists', function (req, res, next) {
       const newShopList = {
         topic: req.body.topic,
         items: req.body.items || []
-        // createdDate will be automatically set by schema default
       };
 
       user.shopLists.push(newShopList);
@@ -384,7 +473,6 @@ server.get('/users/:userId/shoplists/:listId/items', function (req, res, next) {
     });
 });
 
-// MODIFIED: Updated to handle isChecked field and addedDate will be auto-set
 server.post('/users/:userId/shoplists/:listId/items', function (req, res, next) {
   console.log('POST /users/:userId/shoplists/:listId/items params=>' + JSON.stringify(req.params));
   console.log('POST /users/:userId/shoplists/:listId/items body=>' + JSON.stringify(req.body));
@@ -413,12 +501,10 @@ server.post('/users/:userId/shoplists/:listId/items', function (req, res, next) 
         return next(new errors.NotFoundError(`Shop list with id '${req.params.listId}' not found`));
       }
 
-      // MODIFIED: Create item with optional isChecked field (defaults to false if not provided)
       const newItem = {
         name: req.body.name,
         price: price,
-        isChecked: req.body.isChecked !== undefined ? req.body.isChecked : false // Use provided value or default to false
-        // addedDate will be automatically set by schema default
+        isChecked: req.body.isChecked !== undefined ? req.body.isChecked : false
       };
 
       shopList.items.push(newItem);
@@ -436,7 +522,6 @@ server.post('/users/:userId/shoplists/:listId/items', function (req, res, next) 
     });
 });
 
-// MODIFIED: Updated to allow updating isChecked field
 server.put('/users/:userId/shoplists/:listId/items/:itemId', function (req, res, next) {
   console.log('PUT /users/:userId/shoplists/:listId/items/:itemId params=>' + JSON.stringify(req.params));
   console.log('PUT /users/:userId/shoplists/:listId/items/:itemId body=>' + JSON.stringify(req.body));
@@ -475,7 +560,6 @@ server.put('/users/:userId/shoplists/:listId/items/:itemId', function (req, res,
       if (req.body.price !== undefined) {
         item.price = Number(req.body.price);
       }
-      // MODIFIED: Allow updating isChecked field
       if (req.body.isChecked !== undefined) {
         item.isChecked = req.body.isChecked;
       }
@@ -594,7 +678,7 @@ server.get('/users/shoplists/topics/:topic', function (req, res, next) {
               shopListId: shopList._id,
               topic: shopList.topic,
               itemCount: shopList.items.length,
-              createdDate: shopList.createdDate // OPTIONAL: Include created date
+              createdDate: shopList.createdDate
             });
           }
         });
