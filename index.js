@@ -387,6 +387,7 @@ server.get('/users/:userId/shoplists/:listId', function (req, res, next) {
     });
 });
 
+// FIXED: UPDATE shop list - NOW UPDATES ITEMS AND THEIR CHECKED STATE
 server.put('/users/:userId/shoplists/:listId', function (req, res, next) {
   console.log('PUT /users/:userId/shoplists/:listId params=>' + JSON.stringify(req.params));
   console.log('PUT /users/:userId/shoplists/:listId body=>' + JSON.stringify(req.body));
@@ -407,16 +408,36 @@ server.put('/users/:userId/shoplists/:listId', function (req, res, next) {
         return next(new errors.NotFoundError(`Shop list with id '${req.params.listId}' not found`));
       }
 
+      // Update the topic
       shopList.topic = req.body.topic;
+      
+      // IMPORTANT: Update items if provided
+      if (req.body.items && Array.isArray(req.body.items)) {
+        // Clear existing items
+        shopList.items = [];
+        // Add updated items with their checked state
+        req.body.items.forEach(item => {
+          shopList.items.push({
+            name: item.name,
+            price: item.price,
+            isChecked: item.isChecked !== undefined ? item.isChecked : false,
+            addedDate: item.addedDate ? new Date(item.addedDate) : new Date()
+          });
+        });
+        console.log(`Updated ${shopList.items.length} items with isChecked states:`, 
+          shopList.items.map(i => ({ name: i.name, isChecked: i.isChecked })));
+      }
       
       return user.save();
     })
     .then((updatedUser) => {
       const updatedShopList = updatedUser.shopLists.id(req.params.listId);
+      console.log('Saved list with items:', updatedShopList.items.map(i => ({ name: i.name, isChecked: i.isChecked })));
       res.send(200, updatedShopList);
       return next();
     })
     .catch((error) => {
+      console.error("Error updating shop list:", error);
       return next(new Error(JSON.stringify(error.errors)));
     });
 });
