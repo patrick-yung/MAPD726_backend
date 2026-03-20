@@ -38,6 +38,15 @@ server.listen(PORT, function () {
   console.log(' /users/:userId/shoplists/:listId/items/:itemId');
   console.log(' /users/:userId/shoplists/search');
   console.log(' /users/shoplists/topics/:topic');
+  console.log('**** Product API Resources: ****');
+  console.log(' GET    /products');
+  console.log(' GET    /products/categorized');
+  console.log(' GET    /products/search?q=:query');
+  console.log(' GET    /products/category/:category');
+  console.log(' POST   /products');
+  console.log(' PUT    /products/:id');
+  console.log(' DELETE /products/:id');
+  console.log(' POST   /products/seed');
 });
 
 server.use(restify.plugins.fullResponse());
@@ -57,14 +66,27 @@ const shopListSchema = new mongoose.Schema({
   createdDate: { type: Date, default: Date.now }
 });
 
-// ✅ ADDED: Password field with default "123"
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
-  password: { type: String, required: true, default: '123' }, // Default password is 123
+  password: { type: String, required: true, default: '123' },
   shopLists: [shopListSchema]
 });
 
 const User = mongoose.model('User', userSchema);
+
+const productSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  category: { type: String, required: true },
+  prices: {
+    walmart: { type: Number, required: true, min: 0 },
+    costco: { type: Number, required: true, min: 0 },
+    superstore: { type: Number, required: true, min: 0 }
+  },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+const Product = mongoose.model('Product', productSchema);
 
 let functionCallCounts = {};
 
@@ -84,7 +106,6 @@ server.get('/users', function (req, res, next) {
 
   User.find({})
     .then((users) => {
-      // Don't send passwords in response for security
       const usersWithoutPasswords = users.map(user => {
         const userObj = user.toObject();
         delete userObj.password;
@@ -105,7 +126,6 @@ server.get('/users/:id', function (req, res, next) {
   User.findById(req.params.id)
     .then((user) => {
       if (user) {
-        // Don't send password in response
         const userObj = user.toObject();
         delete userObj.password;
         res.send(userObj);
@@ -119,7 +139,6 @@ server.get('/users/:id', function (req, res, next) {
     });
 });
 
-// ✅ NEW: Get user password by ID (for specific use cases)
 server.get('/users/:id/password', function (req, res, next) {
   console.log('GET /users/:id/password params=>' + JSON.stringify(req.params));
   trackFunctionCall('/users/:id/password', 'GET');
@@ -129,7 +148,6 @@ server.get('/users/:id/password', function (req, res, next) {
       if (!user) {
         return next(new errors.NotFoundError(`User with id '${req.params.id}' not found`));
       }
-      // Only send password
       res.send({ password: user.password });
       return next();
     })
@@ -138,7 +156,6 @@ server.get('/users/:id/password', function (req, res, next) {
     });
 });
 
-// ✅ NEW: Authenticate user endpoint
 server.post('/users/authenticate', function (req, res, next) {
   console.log('POST /users/authenticate body=>' + JSON.stringify(req.body));
   trackFunctionCall('/users/authenticate', 'POST');
@@ -157,12 +174,10 @@ server.post('/users/authenticate', function (req, res, next) {
         return next(new errors.UnauthorizedError('Invalid username or password'));
       }
 
-      // Check password
       if (user.password !== req.body.password) {
         return next(new errors.UnauthorizedError('Invalid username or password'));
       }
 
-      // Authentication successful - return user without password
       const userObj = user.toObject();
       delete userObj.password;
       
@@ -178,7 +193,6 @@ server.post('/users/authenticate', function (req, res, next) {
     });
 });
 
-// ✅ UPDATED: Create user with optional password (defaults to "123")
 server.post('/users', function (req, res, next) {
   console.log('POST /users body=>' + JSON.stringify(req.body));
   trackFunctionCall('/users', 'POST');
@@ -197,10 +211,9 @@ server.post('/users', function (req, res, next) {
         return Promise.reject(new errors.ConflictError(`User with username '${req.body.username}' already exists`));
       }
 
-      // Use provided password or default to "123"
       let newUser = new User({
         username: req.body.username,
-        password: req.body.password || '123', // Use provided password or default
+        password: req.body.password || '123',
         shopLists: []
       });
 
@@ -208,7 +221,6 @@ server.post('/users', function (req, res, next) {
     })
     .then((user) => {
       console.log("saved user: " + JSON.stringify(user));
-      // Don't send password back
       const userObj = user.toObject();
       delete userObj.password;
       res.send(201, userObj);
@@ -219,7 +231,6 @@ server.post('/users', function (req, res, next) {
     });
 });
 
-// ✅ UPDATED: Update user with password support
 server.put('/users/:id', function (req, res, next) {
   console.log('PUT /users/:id params=>' + JSON.stringify(req.params));
   console.log('PUT /users/:id body=>' + JSON.stringify(req.body));
@@ -231,7 +242,6 @@ server.put('/users/:id', function (req, res, next) {
         return next(new errors.NotFoundError(`User with id '${req.params.id}' not found`));
       }
 
-      // Handle username update
       let updatePromise = Promise.resolve();
 
       if (req.body.username !== undefined) {
@@ -247,7 +257,6 @@ server.put('/users/:id', function (req, res, next) {
       }
 
       return updatePromise.then(() => {
-        // Handle password update
         if (req.body.password !== undefined) {
           existingUser.password = req.body.password;
         }
@@ -255,7 +264,6 @@ server.put('/users/:id', function (req, res, next) {
       });
     })
     .then((updatedUser) => {
-      // Don't send password back
       const userObj = updatedUser.toObject();
       delete userObj.password;
       res.send(200, userObj);
@@ -379,6 +387,7 @@ server.get('/users/:userId/shoplists/:listId', function (req, res, next) {
     });
 });
 
+// FIXED: UPDATE shop list - NOW UPDATES ITEMS AND THEIR CHECKED STATE
 server.put('/users/:userId/shoplists/:listId', function (req, res, next) {
   console.log('PUT /users/:userId/shoplists/:listId params=>' + JSON.stringify(req.params));
   console.log('PUT /users/:userId/shoplists/:listId body=>' + JSON.stringify(req.body));
@@ -399,16 +408,36 @@ server.put('/users/:userId/shoplists/:listId', function (req, res, next) {
         return next(new errors.NotFoundError(`Shop list with id '${req.params.listId}' not found`));
       }
 
+      // Update the topic
       shopList.topic = req.body.topic;
+      
+      // IMPORTANT: Update items if provided
+      if (req.body.items && Array.isArray(req.body.items)) {
+        // Clear existing items
+        shopList.items = [];
+        // Add updated items with their checked state
+        req.body.items.forEach(item => {
+          shopList.items.push({
+            name: item.name,
+            price: item.price,
+            isChecked: item.isChecked !== undefined ? item.isChecked : false,
+            addedDate: item.addedDate ? new Date(item.addedDate) : new Date()
+          });
+        });
+        console.log(`Updated ${shopList.items.length} items with isChecked states:`, 
+          shopList.items.map(i => ({ name: i.name, isChecked: i.isChecked })));
+      }
       
       return user.save();
     })
     .then((updatedUser) => {
       const updatedShopList = updatedUser.shopLists.id(req.params.listId);
+      console.log('Saved list with items:', updatedShopList.items.map(i => ({ name: i.name, isChecked: i.isChecked })));
       res.send(200, updatedShopList);
       return next();
     })
     .catch((error) => {
+      console.error("Error updating shop list:", error);
       return next(new Error(JSON.stringify(error.errors)));
     });
 });
@@ -690,6 +719,193 @@ server.get('/users/shoplists/topics/:topic', function (req, res, next) {
         count: results.length,
         shopLists: results
       });
+      return next();
+    })
+    .catch((error) => {
+      return next(new Error(JSON.stringify(error.errors)));
+    });
+});
+
+// ==================== PRODUCT ENDPOINTS ====================
+
+// Get all products
+server.get('/products', function (req, res, next) {
+  console.log('GET /products');
+  trackFunctionCall('/products', 'GET');
+
+  Product.find({})
+    .then((products) => {
+      res.send(products);
+      return next();
+    })
+    .catch((error) => {
+      return next(new Error(JSON.stringify(error.errors)));
+    });
+});
+
+// Get categorized products (grouped by category)
+server.get('/products/categorized', function (req, res, next) {
+  console.log('GET /products/categorized');
+  trackFunctionCall('/products/categorized', 'GET');
+
+  Product.find({})
+    .then((products) => {
+      const categorizedData = {};
+      
+      products.forEach(product => {
+        if (!categorizedData[product.category]) {
+          categorizedData[product.category] = {};
+        }
+        
+        categorizedData[product.category][product.name] = [
+          product.prices.walmart,
+          product.prices.costco,
+          product.prices.superstore
+        ];
+      });
+      
+      res.send(categorizedData);
+      return next();
+    })
+    .catch((error) => {
+      return next(new Error(JSON.stringify(error.errors)));
+    });
+});
+
+// Search products by name
+server.get('/products/search', function (req, res, next) {
+  console.log('GET /products/search query=>' + JSON.stringify(req.query));
+  trackFunctionCall('/products/search', 'GET');
+
+  const query = req.query.q;
+  if (!query) {
+    return next(new errors.BadRequestError('Search query parameter "q" is required'));
+  }
+
+  Product.find({ name: { $regex: new RegExp(query, 'i') } })
+    .then((products) => {
+      res.send(products);
+      return next();
+    })
+    .catch((error) => {
+      return next(new Error(JSON.stringify(error.errors)));
+    });
+});
+
+// Get products by category
+server.get('/products/category/:category', function (req, res, next) {
+  console.log('GET /products/category/:category params=>' + JSON.stringify(req.params));
+  trackFunctionCall('/products/category/:category', 'GET');
+
+  Product.find({ category: { $regex: new RegExp(req.params.category, 'i') } })
+    .then((products) => {
+      res.send(products);
+      return next();
+    })
+    .catch((error) => {
+      return next(new Error(JSON.stringify(error.errors)));
+    });
+});
+
+// Create a new product
+server.post('/products', function (req, res, next) {
+  console.log('POST /products body=>' + JSON.stringify(req.body));
+  trackFunctionCall('/products', 'POST');
+
+  if (!req.body.name || !req.body.category || !req.body.prices) {
+    return next(new errors.BadRequestError('Name, category, and prices are required'));
+  }
+
+  const newProduct = new Product({
+    name: req.body.name,
+    category: req.body.category,
+    prices: {
+      walmart: req.body.prices.walmart,
+      costco: req.body.prices.costco,
+      superstore: req.body.prices.superstore
+    }
+  });
+
+  newProduct.save()
+    .then((product) => {
+      res.send(201, product);
+      return next();
+    })
+    .catch((error) => {
+      return next(new Error(JSON.stringify(error.errors)));
+    });
+});
+
+// Update a product
+server.put('/products/:id', function (req, res, next) {
+  console.log('PUT /products/:id params=>' + JSON.stringify(req.params));
+  console.log('PUT /products/:id body=>' + JSON.stringify(req.body));
+  trackFunctionCall('/products/:id', 'PUT');
+
+  Product.findById(req.params.id)
+    .then((product) => {
+      if (!product) {
+        return next(new errors.NotFoundError(`Product with id '${req.params.id}' not found`));
+      }
+
+      if (req.body.name) product.name = req.body.name;
+      if (req.body.category) product.category = req.body.category;
+      if (req.body.prices) {
+        if (req.body.prices.walmart !== undefined) product.prices.walmart = req.body.prices.walmart;
+        if (req.body.prices.costco !== undefined) product.prices.costco = req.body.prices.costco;
+        if (req.body.prices.superstore !== undefined) product.prices.superstore = req.body.prices.superstore;
+      }
+      product.updatedAt = Date.now();
+
+      return product.save();
+    })
+    .then((updatedProduct) => {
+      res.send(200, updatedProduct);
+      return next();
+    })
+    .catch((error) => {
+      return next(new Error(JSON.stringify(error.errors)));
+    });
+});
+
+// Delete a product
+server.del('/products/:id', function (req, res, next) {
+  console.log('DELETE /products/:id params=>' + JSON.stringify(req.params));
+  trackFunctionCall('/products/:id', 'DELETE');
+
+  Product.findByIdAndDelete(req.params.id)
+    .then((product) => {
+      if (!product) {
+        return next(new errors.NotFoundError(`Product with id '${req.params.id}' not found`));
+      }
+      res.send(200, {
+        message: `Product '${product.name}' deleted successfully`,
+        deletedProduct: product.name
+      });
+      return next();
+    })
+    .catch((error) => {
+      return next(new Error(JSON.stringify(error.errors)));
+    });
+});
+
+// Seed initial product data (run this once to populate the database)
+server.post('/products/seed', function (req, res, next) {
+  const sampleProducts = [
+    { name: "Milk (4L)", category: "Poultry", prices: { walmart: 5.49, costco: 5.29, superstore: 5.59 } },
+    { name: "Eggs (12pk)", category: "Poultry", prices: { walmart: 3.99, costco: 3.50, superstore: 4.10 } },
+    { name: "Bread", category: "Bakery", prices: { walmart: 2.99, costco: 2.79, superstore: 3.29 } },
+    { name: "Bagels (6pk)", category: "Bakery", prices: { walmart: 3.49, costco: 3.99, superstore: 3.29 } },
+    { name: "Bananas", category: "Produce", prices: { walmart: 0.79, costco: 0.69, superstore: 0.89 } },
+    { name: "Apples (1lb)", category: "Produce", prices: { walmart: 2.49, costco: 2.99, superstore: 2.29 } },
+    { name: "Rice (8kg)", category: "Pantry", prices: { walmart: 18.99, costco: 17.99, superstore: 19.49 } },
+    { name: "Flour (2kg)", category: "Pantry", prices: { walmart: 4.49, costco: 4.99, superstore: 4.29 } },
+    { name: "Sugar (1kg)", category: "Pantry", prices: { walmart: 2.99, costco: 2.79, superstore: 3.19 } }
+  ];
+  
+  Product.insertMany(sampleProducts)
+    .then((products) => {
+      res.send(201, { message: "Sample data added successfully", count: products.length });
       return next();
     })
     .catch((error) => {
