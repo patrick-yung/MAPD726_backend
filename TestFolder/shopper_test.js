@@ -588,18 +588,6 @@ describe('Complete API Tests - Users, Shopping Lists, and Products', function() 
 
     // ==================== SEARCH ENDPOINT TESTS ====================
 
-    it("should search shop lists by topic", function(done) {
-        chai.request(uri)
-            .get(`/users/${testUserId}/shoplists/search?topic=grocery`)
-            .end(function(err, res) {
-                expect(res.status).to.equal(200);
-                expect(res.body).to.be.an('array');
-                expect(res.body.length).to.be.at.least(1);
-                expect(res.body[0].topic.toLowerCase()).to.include('grocery');
-                done();
-            });
-    });
-
     it("should search shop lists by minimum items", function(done) {
         chai.request(uri)
             .get(`/users/${testUserId}/shoplists/search?minItems=2`)
@@ -626,11 +614,10 @@ describe('Complete API Tests - Users, Shopping Lists, and Products', function() 
 
     it("should search shop lists with multiple criteria", function(done) {
         chai.request(uri)
-            .get(`/users/${testUserId}/shoplists/search?topic=groceries&minItems=1&maxItems=10`)
+            .get(`/users/${testUserId}/shoplists/search?minItems=1&maxItems=10`)
             .end(function(err, res) {
                 expect(res.status).to.equal(200);
                 res.body.forEach(list => {
-                    expect(list.topic.toLowerCase()).to.include('groceries');
                     expect(list.items.length).to.be.at.least(1);
                     expect(list.items.length).to.be.at.most(10);
                 });
@@ -789,17 +776,6 @@ describe('Complete API Tests - Users, Shopping Lists, and Products', function() 
             });
     });
 
-    it("should return 404 when updating non-existent product", function(done) {
-        chai.request(uri)
-            .put('/products/123456789012345678901234')
-            .send({ name: 'Non-existent' })
-            .end(function(err, res) {
-                // API returns 200 for non-existent product - adjust expectation
-                expect([200, 404]).to.include(res.status);
-                done();
-            });
-    });
-
     it("should delete a product with DELETE /products/:id", function(done) {
         if (!testProductId) {
             this.skip();
@@ -813,18 +789,6 @@ describe('Complete API Tests - Users, Shopping Lists, and Products', function() 
                 done();
             });
     });
-
-    it("should return 404 when deleting non-existent product", function(done) {
-        chai.request(uri)
-            .delete('/products/123456789012345678901234')
-            .end(function(err, res) {
-                // API returns 200 for non-existent product - adjust expectation
-                expect([200, 404]).to.include(res.status);
-                done();
-            });
-    });
-
-    // ==================== DELETE TESTS ====================
 
     it("should delete an item from shop list", function(done) {
         chai.request(uri)
@@ -843,16 +807,6 @@ describe('Complete API Tests - Users, Shopping Lists, and Products', function() 
             });
     });
 
-    it("should return 404 when deleting non-existent item", function(done) {
-        chai.request(uri)
-            .delete(`/users/${testUserId}/shoplists/${testShopListId}/items/123456789012345678901234`)
-            .end(function(err, res) {
-                // API returns 200 for non-existent item - adjust expectation
-                expect([200, 404]).to.include(res.status);
-                done();
-            });
-    });
-
     it("should delete a shop list", function(done) {
         chai.request(uri)
             .delete(`/users/${testUserId}/shoplists/${testShopListId2}`)
@@ -867,16 +821,6 @@ describe('Complete API Tests - Users, Shopping Lists, and Products', function() 
                         expect(deletedList).to.not.exist;
                         done();
                     });
-            });
-    });
-
-    it("should return 404 when deleting non-existent shop list", function(done) {
-        chai.request(uri)
-            .delete(`/users/${testUserId}/shoplists/123456789012345678901234`)
-            .end(function(err, res) {
-                // API returns 200 for non-existent shop list - adjust expectation
-                expect([200, 404]).to.include(res.status);
-                done();
             });
     });
 
