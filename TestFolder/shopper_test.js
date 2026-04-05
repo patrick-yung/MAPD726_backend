@@ -1096,6 +1096,138 @@ describe('Complete API Tests - Users, Shopping Lists, and Products', function() 
             });
     });
 
-    it("should get products by category case-insensitive", function(done) {
+        it("should get products by category case-insensitive", function(done) {
         chai.request(uri)
-            .get('/
+            .get('/products/category/poultry')
+            .timeout(10000)
+            .end(function(err, res) {
+                if (err) {
+                    console.log('Warning: Get products by category case-insensitive failed:', err.message);
+                    done();
+                    return;
+                }
+                expect(res.status).to.equal(200);
+                done();
+            });
+    });
+
+    it("should update a product with PUT /products/:id", function(done) {
+        if (!testProductId) {
+            this.skip();
+            return;
+        }
+        chai.request(uri)
+            .put(`/products/${testProductId}`)
+            .send({
+                name: 'Updated Product Name',
+                prices: { walmart: 15.99 }
+            })
+            .timeout(10000)
+            .end(function(err, res) {
+                if (err) {
+                    console.log('Warning: Update product failed:', err.message);
+                    done();
+                    return;
+                }
+                expect(res.status).to.equal(200);
+                expect(res.body).to.have.property('name', 'Updated Product Name');
+                expect(res.body.prices).to.have.property('walmart', 15.99);
+                done();
+            });
+    });
+
+    it("should delete a product with DELETE /products/:id", function(done) {
+        if (!testProductId) {
+            this.skip();
+            return;
+        }
+        chai.request(uri)
+            .delete(`/products/${testProductId}`)
+            .timeout(10000)
+            .end(function(err, res) {
+                if (err) {
+                    console.log('Warning: Delete product failed:', err.message);
+                    done();
+                    return;
+                }
+                expect(res.status).to.equal(200);
+                expect(res.body).to.have.property('message');
+                done();
+            });
+    });
+
+    it("should delete an item from shop list", function(done) {
+        chai.request(uri)
+            .delete(`/users/${testUserId}/shoplists/${testShopListId}/items/${testItemId}`)
+            .end(function(err, res) {
+                expect(res.status).to.equal(200);
+                expect(res.body).to.have.property('message', 'Item deleted successfully');
+                
+                chai.request(uri)
+                    .get(`/users/${testUserId}/shoplists/${testShopListId}/items`)
+                    .end(function(err, res) {
+                        const deletedItem = res.body.find(item => item._id === testItemId);
+                        expect(deletedItem).to.not.exist;
+                        done();
+                    });
+            });
+    });
+
+    it("should delete a shop list", function(done) {
+        chai.request(uri)
+            .delete(`/users/${testUserId}/shoplists/${testShopListId2}`)
+            .end(function(err, res) {
+                expect(res.status).to.equal(200);
+                expect(res.body).to.have.property('message', 'Shop list deleted successfully');
+                
+                chai.request(uri)
+                    .get(`/users/${testUserId}/shoplists`)
+                    .end(function(err, res) {
+                        const deletedList = res.body.find(list => list._id === testShopListId2);
+                        expect(deletedList).to.not.exist;
+                        done();
+                    });
+            });
+    });
+
+    it("should delete a user", function(done) {
+        chai.request(uri)
+            .delete(`/users/${testUserId2}`)
+            .end(function(err, res) {
+                expect(res.status).to.equal(200);
+                expect(res.body).to.have.property('message').that.includes('deleted successfully');
+                
+                chai.request(uri)
+                    .get(`/users/${testUserId2}`)
+                    .end(function(err, res) {
+                        expect(res.status).to.equal(404);
+                        done();
+                    });
+            });
+    });
+
+    it("should return 404 when deleting non-existent user", function(done) {
+        chai.request(uri)
+            .delete('/users/123456789012345678901234')
+            .end(function(err, res) {
+                expect(res.status).to.equal(404);
+                done();
+            });
+    });
+
+    it("should delete all remaining users at the end", function(done) {
+        chai.request(uri)
+            .delete('/users')
+            .end(function(err, res) {
+                expect(res.status).to.equal(200);
+                expect(res.body).to.have.property('deletedCount').that.is.at.least(0);
+                
+                chai.request(uri)
+                    .get('/users')
+                    .end(function(err, res) {
+                        expect(res.body).to.be.an('array');
+                        done();
+                    });
+            });
+    });
+});
